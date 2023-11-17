@@ -2,16 +2,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from pymongo import MongoClient
+import stripe
 
 router = APIRouter()
+stripe.api_key = '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'
 
-mongo_uri = "mongodb+srv://devguru13580:hXcQgMDBinZ8wlo4@cluster0.ehilact.mongodb.net/"
+mongo_uri = "mongodb://localhost:27017/"
 client = MongoClient(mongo_uri)
-
-# Create a database object
 db = client["harmony"]
-
-# Define MongoDB collection for users
 users_collection = db["users"]
 
 class UserSignIn(BaseModel):
@@ -60,25 +58,33 @@ def helps():
 
 
 @router.post("/create-checkout-session")
-async def create_checkout_session():
-    session = await stripe.checkout.sessions.create(
-        line_items=[
-            {
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": "T-shirt",
-                    },
-                    "unit_amount": 2000,
+async def create_checkout_session(request: Request):
+    data = await request.json()
+    plan = data.get("plan")
+
+    if plan == "premium":
+        price_id = "price_1OBn3kItQ91j83DindUoX85a"  # Replace with your actual price ID
+    elif plan == "professional":
+        price_id = "price_1OBn6GItQ91j83Di0JWVJmlx"  # Replace with your actual price ID
+    else:
+        raise HTTPException(status_code=400, detail="Invalid plan selected")
+
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[
+                {
+                    'price': price_id,
+                    'quantity': 1,
                 },
-                "quantity": 1,
-            }
-        ],
-        mode="payment",
-        success_url="localhost:8000/home",
-        cancel_url="localhost:8000/pricing",
-    )
-    return JSONResponse(content={"url": session.url})
+            ],
+            mode='subscription',
+            success_url='your_success_url_here',
+            cancel_url='your_cancel_url_here',
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/webhook")
 async def stripe_webhook(request: Request):
